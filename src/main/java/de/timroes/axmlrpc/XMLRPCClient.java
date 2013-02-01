@@ -150,6 +150,7 @@ public class XMLRPCClient {
 	private int flags;
 
 	private URL url;
+	private String forcedCN;
 	private Map<String,String> httpParameters = new HashMap<String, String>();
 
 	private Map<Long,Caller> backgroundCalls = new HashMap<Long, Caller>();
@@ -586,6 +587,18 @@ public class XMLRPCClient {
 
 		}
 		
+		private final String extractCN(String str) throws SSLPeerUnverifiedException {
+			int start=str.indexOf("CN=");
+			if (start == -1) {
+				throw new SSLPeerUnverifiedException("cannot extract CN from " + str);
+			}
+
+			int end=str.indexOf(',', start);
+			if (end == -1) return str.substring(start+3).trim();
+
+			return str.substring(start+3, end).trim();
+		}
+
 		/**
 		 * Verifies the given URLConnection to be a valid HTTP or HTTPS connection.
 		 * If the SSL ignoring flags are set, the method will ignore SSL warnings. 
@@ -610,6 +623,22 @@ public class XMLRPCClient {
 						h.setHostnameVerifier(new HostnameVerifier() {
 							public boolean verify(String host, SSLSession ssl) {
 								return true;
+							}
+						});
+					}
+
+					// Check with a forced domain name
+					if (forcedCN != null) {
+						h.setHostnameVerifier(new HostnameVerifier() {
+							public boolean verify(String host, SSLSession ssl) {
+								try {
+									String principal = ssl.getPeerPrincipal().getName();
+									String cnPattern=extractCN(principal).replace("*", "[\\\\*a-z0-9.]*");
+									return forcedCN.matches(cnPattern);
+								} catch (SSLPeerUnverifiedException e) {
+									e.printStackTrace();
+								}
+								return false;
 							}
 						});
 					}
@@ -660,6 +689,9 @@ public class XMLRPCClient {
 
 	}
 
+	public void setForcedCN(String cn) {
+		this.forcedCN=cn;
+	}
 	private class CancelException extends RuntimeException { }
 
 }
